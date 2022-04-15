@@ -1,0 +1,57 @@
+---
+title: "homework3"
+author: "James(Changhwan) Han (3923257)"
+date: "4/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+```
+
+```{r}
+titanic <- read_csv("titanic.csv")
+head(titanic)
+
+titanic$survived <- factor(titanic$survived, levels = c('Yes', 'No'))
+titanic$pclass <- factor(titanic$pclass)
+
+
+levels(titanic$survived)
+```
+
+Question 1
+```{r}
+set.seed(1996)
+
+titanic_split <- initial_split(titanic, prop = 0.80,
+                                strata = survived)
+titanic_train <- training(titanic_split)
+titanic_test <- testing(titanic_split)
+
+dim(titanic_train)
+dim(titanic_test)
+
+sum(is.na(titanic))
+```
+1) Number of observations?
+train data: 712
+test data: 179
+
+2) Potential issues?
+There are 866 missing values in the dataset and we have to think about how to deal with missing values. Also, we might want to change categoric columns(sex, embarked) to numeric. Additionally we have to consider what columns to use to predict which passengers would survive.
+
+3) Why using stratified sampling?
+If we do not split the data into different sets the model would be evaluated on the same data it has seen during training. We could avoid overfitting by stratifying sampling.
+
+Question 2
+```{r}
+table(titanic$survived)
+```
+1) describe the distribution of the outcome survived.
+People who didn't survive consists approximately 62% of the total number of people.
