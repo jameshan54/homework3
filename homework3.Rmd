@@ -1,6 +1,8 @@
 ---
 title: "homework3"
 author: "James(Changhwan) Han (3923257)"
+header-includes:
+   - \usepackage{bbm}
 date: "4/13/2022"
 output: html_document
 ---
@@ -10,6 +12,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(tidymodels)
+library(ISLR) # For the Smarket data set
+library(ISLR2) # For the Bikeshare data set
+library(discrim)
+library(poissonreg)
+library(corrr)
+library(klaR) # for naive bayes
+tidymodels_prefer()
+
 library(tidyverse)
 library(tidymodels)
 ```
@@ -25,7 +36,7 @@ titanic$pclass <- factor(titanic$pclass)
 levels(titanic$survived)
 ```
 
-Question 1
+# Question 1
 ```{r}
 set.seed(1996)
 
@@ -39,6 +50,7 @@ dim(titanic_test)
 
 sum(is.na(titanic))
 ```
+
 1) Number of observations?
 train data: 712
 test data: 179
@@ -49,9 +61,207 @@ There are 866 missing values in the dataset and we have to think about how to de
 3) Why using stratified sampling?
 If we do not split the data into different sets the model would be evaluated on the same data it has seen during training. We could avoid overfitting by stratifying sampling.
 
-Question 2
+# Question 2
 ```{r}
-table(titanic$survived)
+table(titanic$survived) 
+
+ggplot(titanic_train, aes(x=survived)) + geom_bar()
 ```
 1) describe the distribution of the outcome survived.
 People who didn't survive consists approximately 62% of the total number of people.
+
+# Question 3
+```{r}
+# cor_titanic_train <- titanic_train %>%
+#   select(-passenger_id, -survived, -pclass, -name, -sex, -ticket, -cabin, -embarked) %>%
+#   cor(use = "pairwise.complete.obs", method = "pearson")
+# rplot(cor_titanic_train)
+
+cor_titanic_train <- titanic_train %>%
+  select(is.numeric) %>%
+  correlate()
+rplot(cor_titanic_train)
+
+cor_titanic_train %>%
+  stretch() %>%
+  ggplot(aes(x, y, fill = r)) +
+  geom_tile() +
+  geom_text(aes(label = as.character(fashion(r))))
+```
+1) Are any predictors correlated with each other? Which ones, and in which direction?
+positive numbers from the above indicate that two variables have positive correlation. On the other hand, negative numbers from the above indicate that two variables have negative correlations.
+
+# Question 4
+```{r}
+titanic_recipe <- recipe(survived ~ pclass + sex + age + sib_sp + parch + fare,
+                         data = titanic_train) %>%
+  step_impute_linear(age) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ starts_with("sex"):fare + age:fare)
+```
+
+# Question 5
+```{r}
+log_reg <- logistic_reg() %>% 
+  set_engine("glm") %>% 
+  set_mode("classification")
+
+log_wkflow <- workflow() %>%
+  add_model(log_reg) %>%
+  add_recipe(titanic_recipe)
+
+log_fit <- fit(log_wkflow, titanic_train)
+
+```
+
+# Question 6
+```{r}
+lda_mod <- discrim_linear() %>%
+  set_mode("classification") %>%
+  set_engine("MASS")
+
+lda_wkflow <- workflow() %>%
+  add_model(lda_mod) %>%
+  add_recipe(titanic_recipe)
+
+lda_fit <- fit(lda_wkflow, titanic_train)
+```
+
+# Question 7
+```{r}
+qda_mod <- discrim_quad() %>%
+  set_mode("classification") %>%
+  set_engine("MASS")
+
+qda_wkflow <- workflow() %>%
+  add_model(qda_mod) %>%
+  add_recipe(titanic_recipe)
+
+qda_fit <- fit(qda_wkflow, titanic_train)
+```
+
+# Question 8
+```{r}
+nb_mod <- naive_Bayes() %>%
+  set_mode("classification") %>%
+  set_engine("klaR") %>%
+  set_args(usekernel = FALSE)
+
+nb_wkflow <- workflow() %>% 
+  add_model(nb_mod) %>% 
+  add_recipe(titanic_recipe)
+
+nb_fit <- fit(nb_wkflow, titanic_train)
+```
+
+# Question 9
+```{r, warning = FALSE}
+# log_reg_acc <- augment(log_fit, new_data = titanic_train) %>%
+#   accuracy(truth = survived, estimate = .pred_class)
+# 
+# lda_acc <- augment(lda_fit, new_data = titanic_train) %>%
+#   accuracy(truth = survived, estimate = .pred_class)
+# 
+# qda_acc <- augment(qda_fit, new_data = titanic_train) %>%
+#   accuracy(truth = survived, estimate = .pred_class)
+# 
+# nb_acc <- augment(nb_fit, new_data = titanic_train) %>%
+#   accuracy(truth = survived, estimate = .pred_class)
+# 
+# 
+# accuracies <- c(log_reg_acc$.estimate, lda_acc$.estimate, qda_acc$.estimate, nb_acc$.estimate)
+# models <- c("Logistic Regression", "LDA", "QDA", "Naive Bayes")
+# results <- tibble(accuracies = accuracies, models = models)
+# results %>%
+#   arrange(-accuracies)
+
+bound_train_data = bind_cols(predict(log_fit, new_data = titanic_train, type = "class"),
+                             predict(lda_fit, new_data = titanic_train, type = "class"),
+                             predict(qda_fit, new_data = titanic_train, type = "class"),
+                             predict(nb_fit, new_data = titanic_train, type = "class"),
+                             titanic_train$survived)
+
+colnames(bound_train_data) = c("Log fit", "LDA fit", "QDA fit", "NB fit", "True")
+
+log_reg_acc <- augment(log_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+
+
+lda_acc <- augment(lda_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+
+
+qda_acc <- augment(qda_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+
+
+nb_acc <- augment(nb_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+
+log_reg_acc
+lda_acc
+qda_acc
+nb_acc
+```
+training set of logistic regression had the highest accuarcy among the four. 
+
+
+# Question 10
+```{r, warning = FALSE}
+predict(log_fit, new_data = titanic_test, type = "prob")
+
+augment(log_fit, new_data = titanic_test) %>%
+  conf_mat(truth = survived, estimate = .pred_class) %>%
+  autoplot(type = "heatmap")
+
+augment(log_fit, new_data = titanic_test) %>%
+  roc_auc(truth = survived, estimate = .pred_Yes)
+
+multi_metric <- metric_set(accuracy, sensitivity, specificity)
+
+augment(nb_fit, new_data = titanic_test) %>%
+  multi_metric(truth = survived, estimate = .pred_class)
+
+augment(log_fit, new_data = titanic_test) %>%
+  roc_curve(survived, .pred_Yes) %>%
+  autoplot()
+
+
+```
+
+
+
+# Question 11 
+$$p(z)=\frac{e^{z}}{1+e^{z}} \leftrightarrow p=\frac{e^{z}}{1+e^{z}}$$
+$$
+\begin{aligned}
+&\leftrightarrow \quad p\left(1+e^{z}\right)=e^{z} \\
+&\leftrightarrow \quad p+p e^{z}=e^{z} \\
+&\leftrightarrow \quad e^{z}(1-p)=p \\
+&\leftrightarrow \quad e^{z}=\frac{p}{1-p} \\
+&\leftrightarrow \quad z=\ln \left(\frac{p}{1-p}\right) \\
+&\leftrightarrow \quad z(p)=\ln \left(\frac{p}{1-p}\right)
+\end{aligned}
+$$
+
+# Question 12 
+If you increase $x_1$ by two, the odds of the outcome will increase by $2\beta_{1}$. \
+$z=\beta_{0}+\beta_{1} x_{1}, \quad P(z)=\frac{e^{z}}{1+e^{z}}$
+
+
+(1) Assuming $\beta_{1}$ is negative and $x_{1} \rightarrow \infty$,
+$p=\lim _{x_{1} \rightarrow \infty} \frac{e^{\beta_{0}+\beta_{1} x_{1}}}{1+e^{\left(\beta_{0}+\beta_{1} x_{1}\right)}} \Rightarrow \lim _{z\rightarrow-\infty} \frac{e^{z}}{1+e^{z}} \Rightarrow \frac{0}{1+0} = 0$
+
+
+
+(2) Assuming $\beta_{1}$ is negative and $x_{1} \rightarrow-\infty$,
+$$
+\begin{aligned}
+p=\lim _{x_{1} \rightarrow \infty} \frac{e^{\beta_{0}+\beta_{1} x_{1}}}{1+e^{\left(\beta_{0}+\beta_{1} x_{1}\right)}} & \Rightarrow \lim _{z \rightarrow \infty} \frac{e^{z}}{1+e^{z}} \\
+& \Rightarrow \lim _{z \rightarrow \infty} \frac{1}{\frac{1}{e^{z}}+1} \\
+& \Rightarrow \frac{1}{0+1}=1
+\end{aligned}
+$$
+
+
+
